@@ -64,7 +64,6 @@ func (c *LRU[K, V]) Add(key K, value V) (evicted bool) {
 
 // Get looks up a key's value from the cache.
 func (c *LRU[K, V]) Get(key K) (value V, ok bool) {
-	//fmt.Println(c.items)
 	if ent, ok := c.items[key]; ok {
 		c.evictList.moveToFront(ent)
 		return ent.value, true

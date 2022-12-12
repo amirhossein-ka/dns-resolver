@@ -18,23 +18,19 @@ type Reflector struct {
 	cache  *cache.LRU[key, []dns.RR]
 }
 
-type responseValue struct {
-	ans []dns.RR
-}
-
 type key struct {
 	host     string
 	respType uint16
 }
 
 func newCache(size int) (*cache.LRU[key, []dns.RR], error) {
-	//onEvict := func(key any, val responseValue) {
-	//	if key != val.Question[0].Name {
-	//		log.Println("key and value does not match")
-	//	}
-	//}
+	onEvict := func(key key, val []dns.RR) {
+		if key.host != val[0].Header().Name {
+			log.Println("key and value does not match")
+		}
+	}
 
-	c, err := cache.NewLRU[key, []dns.RR](size, nil)
+	c, err := cache.NewLRU(size, onEvict)
 	if err != nil {
 		return nil, err
 	}
@@ -64,35 +60,31 @@ func NewReflector(args *ReflectorArgs) *Reflector {
 func (r *Reflector) handleReflect(w dns.ResponseWriter, req *dns.Msg) {
 	// if the host already exists on cache and type of requested record is available
 	q := req.Question[0]
-	fmt.Println(q.Name)
 	if ans, ok := r.cache.Get(key{respType: q.Qtype, host: q.Name}); ok {
-		m := new(dns.Msg)
-		//fmt.Println(ans)
-		m.SetReply(req)
-		m.Answer = ans
 		fmt.Println("response from cache")
+		m := new(dns.Msg)
+		m.SetReply(req)
+		m.Question[0] = req.Question[0]
+		m.Answer = ans
 		if err := w.WriteMsg(m); err != nil {
 			log.Println(err)
 			return
 		}
 	} else {
-		//fmt.Println(req.String())
 		// retry exchange
 		for i := 0; i < 3; i++ {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*250)
-			defer cancel()
+			ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*3000)
 			res, _, err := r.client.ExchangeContext(ctx, req, r.args.DNSAddr)
+			cancel()
 			if err != nil {
 				log.Println(err)
 				continue
 			}
 			res.SetReply(req)
-			//fmt.Println(x)
-			e := r.cache.Add(
+			r.cache.Add(
 				key{respType: res.Question[0].Qtype, host: res.Question[0].Name},
-				ans,
+				res.Answer,
 			)
-			fmt.Printf("evicted: %v\n", e)
 
 			if err := w.WriteMsg(res); err != nil {
 				log.Println(err)
