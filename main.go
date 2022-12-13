@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"time"
 )
 
 func main() {
+	// set logs output to stderr
+	log.SetOutput(os.Stderr)
 	args := Args{}
 	if err := args.parse(); err != nil {
 		log.Fatal(err)
