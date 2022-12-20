@@ -62,6 +62,8 @@ func (a *Args) Parse() error {
 	server.StringVar(&a.SocketArgs.Network, "net", "udp", "socket type")
 	server.StringVar(&a.SocketArgs.DNSAddr, "dns", "1.1.1.1:53", "set custom dns for resolver")
 	server.IntVar(&a.SocketArgs.CacheSize, "cachesize", 128, "cache size list")
+	server.StringVar(&a.Redis.Addr, "raddr", "127.0.0.1:6379", "redis server address")
+	server.StringVar(&a.Redis.Password, "pass", "", "redis server password")
 
 	if len(os.Args) < 2 {
 		return fmt.Errorf("error occured while parsing flags: expected 'cmd' or 'server' subcommands")

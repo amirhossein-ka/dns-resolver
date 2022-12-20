@@ -53,7 +53,7 @@ func NewSocket(args *args.ReflectorArgs) (*Socket, error) {
 	onEvict := func(_ dnsmessage.Question, _ []dnsmessage.Resource) {
 	}
 
-	lru, err := cache.NewLRU[dnsmessage.Question, []dnsmessage.Resource](args.CacheSize, onEvict)
+	lru, err := cache.NewLRU(args.CacheSize, onEvict)
 	if err != nil {
 		return nil, err
 	}
@@ -78,8 +78,6 @@ func NewSocket(args *args.ReflectorArgs) (*Socket, error) {
 			},
 		},
 		listener: listen,
-		data:     make(chan data, 64),
-		cancel:   make(chan struct{}),
 	}, nil
 }
 
@@ -165,16 +163,15 @@ func (s *Socket) udpHandler(addr net.Addr, in []byte) {
 	//}
 	//} else {
 	{
-		// parser2 := s.parserPoll.Get().(dnsmessage.Parser)
 		parser2 := dnsmessage.Parser{}
 
 		remoteDns, ok := s.connPoll.Get().(net.Conn)
-		defer func(remoteDns net.Conn) {
+		defer func() {
 			err := remoteDns.Close()
 			if err != nil {
 				log.Println(err)
 			}
-		}(remoteDns)
+		}()
 		if !ok {
 			log.Println("cant connect to remote dns")
 			return
@@ -194,11 +191,8 @@ func (s *Socket) udpHandler(addr net.Addr, in []byte) {
 			log.Println(err)
 			return
 		}
-		resp = resp[:n]
-		println(len(resp))
-
 		// write response to user
-		_, err = s.listener.WriteTo(resp, addr)
+		_, err = s.listener.WriteTo(resp[:n], addr)
 		if err != nil {
 			log.Println(err)
 			return
@@ -211,10 +205,6 @@ func (s *Socket) udpHandler(addr net.Addr, in []byte) {
 			return
 		}
 
-		//if err := parser2.SkipAllQuestions(); err != nil {
-		//	log.Println(err)
-		//	return
-		//}
 		question, err := parser2.AllQuestions()
 		if err != nil {
 			log.Println(err)
@@ -227,9 +217,7 @@ func (s *Socket) udpHandler(addr net.Addr, in []byte) {
 		}
 
 		if r != nil {
-			//r[0].Header.TTL = 0
 			s.cache.Add(question[0], r)
 		}
-
 	}
 }
