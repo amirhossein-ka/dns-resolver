@@ -2,13 +2,14 @@ package main
 
 import (
 	"context"
+	args2 "dns-resolver/args"
 	"fmt"
 	"net"
 )
 
 type resolv struct {
 	resolver *net.Resolver
-	args     *CmdArgs
+	args     *args2.CmdArgs
 }
 
 func (r *resolv) cmdResolve(ch chan Response, host string) {

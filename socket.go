@@ -1,6 +1,7 @@
 package main
 
 import (
+	"dns-resolver/args"
 	"dns-resolver/cache"
 	"fmt"
 	"log"
@@ -12,27 +13,34 @@ import (
 
 type (
 	Socket struct {
-		args       *ReflectorArgs
+		args       *args.ReflectorArgs
 		mu         sync.Mutex
 		cache      *cache.LRU[dnsmessage.Question, []dnsmessage.Resource]
 		parserPoll sync.Pool
 		connPoll   sync.Pool
-		listener   net.PacketConn
+		listener   *net.UDPConn
+		cancel     chan struct{}
+		data       chan data
 	}
-
-	socketKey struct {
-		name string
-		Type uint16
+	data struct {
+		response []byte
+		addr     *net.UDPAddr
 	}
 )
 
-func NewSocket(args *ReflectorArgs) (*Socket, error) {
+func NewSocket(args *args.ReflectorArgs) (*Socket, error) {
 	var (
-		listen net.PacketConn
+		listen *net.UDPConn
 		err    error
 	)
+
+	localAddr, err := net.ResolveUDPAddr(args.Network, args.Addr)
+	if err != nil {
+		return nil, err
+	}
+
 	if args.Network == "udp" {
-		listen, err = net.ListenPacket(args.Network, args.Addr)
+		listen, err = net.ListenUDP(args.Network, localAddr)
 	} else {
 		return nil, fmt.Errorf("network not supported")
 
@@ -41,7 +49,11 @@ func NewSocket(args *ReflectorArgs) (*Socket, error) {
 		return nil, err
 	}
 	log.Printf("started listening on: %s\n", args.Addr)
-	lru, err := cache.NewLRU[dnsmessage.Question, []dnsmessage.Resource](args.CacheSize, nil)
+
+	onEvict := func(_ dnsmessage.Question, _ []dnsmessage.Resource) {
+	}
+
+	lru, err := cache.NewLRU[dnsmessage.Question, []dnsmessage.Resource](args.CacheSize, onEvict)
 	if err != nil {
 		return nil, err
 	}
@@ -66,64 +78,105 @@ func NewSocket(args *ReflectorArgs) (*Socket, error) {
 			},
 		},
 		listener: listen,
+		data:     make(chan data, 64),
+		cancel:   make(chan struct{}),
 	}, nil
 }
 
 func (s *Socket) Serve() {
+
 	for {
-		buf := make([]byte, 1024)
-		readLen, addr, err := s.listener.ReadFrom(buf)
+		buf := make([]byte, 512)
+		readLen, addr, err := s.listener.ReadFromUDP(buf)
 		if err != nil {
 			log.Println(err)
 			return
 		}
-
 		go s.udpHandler(addr, buf[:readLen])
 	}
 }
 
 func (s *Socket) udpHandler(addr net.Addr, in []byte) {
-	parser, ok := s.parserPoll.Get().(dnsmessage.Parser)
-	if !ok {
-		log.Println("cant get parser")
-		return
-	}
+	fmt.Println("handling")
+	//parser := dnsmessage.Parser{}
 
-	header, err := parser.Start(in)
-	if err != nil {
-		log.Println(err)
-		return
-	}
+	//header, err := parser.Start(in)
+	//if err != nil {
+	//	log.Println(err)
+	//	return
+	//}
+	//
+	//question, err := parser.Question()
+	//if err != nil {
+	//	log.Println(err)
+	//	return
+	//}
+	// get result from cache
+	//if answer, _ := s.cache.Get(question); false {
+	//	buf := make([]byte, 2, 514)
+	//	b := dnsmessage.NewBuilder(buf, dnsmessage.Header{ID: header.ID})
+	//	b.EnableCompression()
+	//
+	//	if err := b.StartAnswers(); err != nil {
+	//		log.Println(err)
+	//		return
+	//	}
+	//
+	//	for i := 0; i < len(answer); i++ {
+	//		currentAns := answer[i]
+	//		switch a := currentAns.Body.(type) {
+	//		case *dnsmessage.AResource:
+	//			if err = b.AResource(currentAns.Header, *a); err != nil {
+	//				log.Println(err)
+	//				return
+	//			}
+	//		case *dnsmessage.AAAAResource:
+	//			if err = b.AAAAResource(currentAns.Header, *a); err != nil {
+	//				log.Println(err)
+	//				return
+	//			}
+	//		case *dnsmessage.CNAMEResource:
+	//			if err = b.CNAMEResource(currentAns.Header, *a); err != nil {
+	//				log.Println(err)
+	//				return
+	//			}
+	//		case *dnsmessage.MXResource:
+	//			if err = b.MXResource(currentAns.Header, *a); err != nil {
+	//				log.Println(err)
+	//				return
+	//			}
+	//		case *dnsmessage.NSResource:
+	//			if err = b.NSResource(currentAns.Header, *a); err != nil {
+	//				log.Println(err)
+	//				return
+	//			}
+	//		}
+	//	}
+	//	buf, err := b.Finish()
+	//	if err != nil {
+	//		log.Println(err)
+	//		return
+	//	}
+	//	_, err = s.listener.WriteTo(buf[2:], addr)
+	//	if err != nil {
+	//		log.Println(err)
+	//		return
+	//	}
+	//}
+	//} else {
+	{
+		// parser2 := s.parserPoll.Get().(dnsmessage.Parser)
+		parser2 := dnsmessage.Parser{}
 
-	question, err := parser.Question()
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	if answer, ok := s.cache.Get(question); ok {
-		response := new(dnsmessage.Message)
-		response.Questions = append(response.Questions, question)
-		response.Header = header
-		response.Answers = answer
-
-		msg, err := response.Pack()
-		if err != nil {
-			log.Println(err)
-			return
-		}
-
-		_, err = s.listener.WriteTo(msg, addr)
-		if err != nil {
-			log.Println(err)
-			return
-		}
-
-	} else {
-		parser2 := s.parserPoll.Get().(dnsmessage.Parser)
 		remoteDns, ok := s.connPoll.Get().(net.Conn)
-		defer remoteDns.Close()
+		defer func(remoteDns net.Conn) {
+			err := remoteDns.Close()
+			if err != nil {
+				log.Println(err)
+			}
+		}(remoteDns)
 		if !ok {
+			log.Println("cant connect to remote dns")
 			return
 		}
 		// redirect the query to remoteDns
@@ -133,37 +186,50 @@ func (s *Socket) udpHandler(addr net.Addr, in []byte) {
 			return
 		}
 
-		resp := make([]byte, 514)
+		resp := make([]byte, 512)
 
-		_, err = remoteDns.Read(resp)
+		// read response from remoteDns
+		n, err := remoteDns.Read(resp)
 		if err != nil {
 			log.Println(err)
 			return
 		}
+		resp = resp[:n]
+		println(len(resp))
 
+		// write response to user
 		_, err = s.listener.WriteTo(resp, addr)
 		if err != nil {
 			log.Println(err)
 			return
 		}
 
+		// start parsing response to add it to the cache
 		_, err = parser2.Start(resp)
 		if err != nil {
 			log.Println(err)
 			return
 		}
 
-		q, err := parser2.AllQuestions()
+		//if err := parser2.SkipAllQuestions(); err != nil {
+		//	log.Println(err)
+		//	return
+		//}
+		question, err := parser2.AllQuestions()
 		if err != nil {
 			log.Println(err)
 			return
 		}
-		r, err := parser2.Answer()
+		r, err := parser2.AllAnswers()
 		if err != nil {
 			log.Println(err)
 			return
 		}
 
-		s.cache.Add(q[0], []dnsmessage.Resource{r})
+		if r != nil {
+			//r[0].Header.TTL = 0
+			s.cache.Add(question[0], r)
+		}
+
 	}
 }

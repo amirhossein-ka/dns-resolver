@@ -1,12 +1,13 @@
 package main
 
 import (
+	"dns-resolver/args"
 	"github.com/miekg/dns"
 	"testing"
 )
 
 var (
-	reflector = NewReflector(&ReflectorArgs{
+	reflector = NewReflector(&args.ReflectorArgs{
 		Addr:      ":8053",
 		Network:   "udp",
 		DNSAddr:   "1.1.1.1:53",

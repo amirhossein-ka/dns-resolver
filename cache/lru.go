@@ -2,6 +2,7 @@ package cache
 
 import (
 	"errors"
+	"sync"
 )
 
 // EvictCallback is used to get a callback when a cache entry is evicted
@@ -13,6 +14,7 @@ type LRU[K comparable, V any] struct {
 	evictList *lruList[K, V]
 	items     map[K]*entry[K, V]
 	onEvict   EvictCallback[K, V]
+	sync.RWMutex
 }
 
 // NewLRU constructs an LRU of the given size
@@ -43,6 +45,8 @@ func (c *LRU[K, V]) Purge() {
 
 // Add adds a value to the cache.  Returns true if an eviction occurred.
 func (c *LRU[K, V]) Add(key K, value V) (evicted bool) {
+	c.Lock()
+	defer c.Unlock()
 	// Check for existing item
 	if ent, ok := c.items[key]; ok {
 		c.evictList.moveToFront(ent)
@@ -64,6 +68,8 @@ func (c *LRU[K, V]) Add(key K, value V) (evicted bool) {
 
 // Get looks up a key's value from the cache.
 func (c *LRU[K, V]) Get(key K) (value V, ok bool) {
+	c.Lock()
+	defer c.Unlock()
 	if ent, ok := c.items[key]; ok {
 		c.evictList.moveToFront(ent)
 		return ent.value, true

@@ -1,4 +1,4 @@
-package main
+package args
 
 import (
 	"context"
@@ -15,6 +15,7 @@ type (
 		OpenConn   bool
 		CmdArgs    CmdArgs
 		SocketArgs ReflectorArgs
+		Redis      Redis
 	}
 	CmdArgs struct {
 		Hosts              Hosts
@@ -29,6 +30,12 @@ type (
 		DNSAddr   string
 		CacheSize int
 	}
+
+	Redis struct {
+		Addr     string
+		Password string
+		DB       int
+	}
 )
 
 // String return the default host for query
@@ -41,7 +48,7 @@ func (h *Hosts) Set(val string) error {
 	return nil
 }
 
-func (a *Args) parse() error {
+func (a *Args) Parse() error {
 	cmd := flag.NewFlagSet("cmd", flag.ExitOnError)
 	cmd.BoolVar(&a.CmdArgs.A, "a", true, "search for A record")
 	cmd.BoolVar(&a.CmdArgs.AAAA, "aaaa", false, "search for AAAA record")

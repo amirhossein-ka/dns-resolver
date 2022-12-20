@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	args2 "dns-resolver/args"
 	"fmt"
 	"log"
 	"net"
@@ -13,8 +14,8 @@ func main() {
 	// set logs output to stderr
 	log.SetOutput(os.Stderr)
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	args := Args{}
-	if err := args.parse(); err != nil {
+	args := args2.Args{}
+	if err := args.Parse(); err != nil {
 		log.Fatal(err)
 	}
 
@@ -31,9 +32,9 @@ func main() {
 	}
 
 	if args.OpenConn {
-		// if err := NewReflector(&args.SocketArgs).Serve(); err != nil {
-		// 	log.Fatal(err)
-		// }
+		//if err := NewReflector(&args.SocketArgs).Serve(); err != nil {
+		//	log.Fatal(err)
+		//}
 		s, err := NewSocket(&args.SocketArgs)
 		if err != nil {
 			log.Fatal(err)
