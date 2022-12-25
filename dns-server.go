@@ -4,7 +4,6 @@ import (
 	"context"
 	args2 "dns-resolver/args"
 	"dns-resolver/cache"
-	"fmt"
 	"log"
 	"net"
 	"sync"
@@ -58,7 +57,6 @@ func (r *Reflector) handleReflect(w dns.ResponseWriter, req *dns.Msg) {
 	// if the host already exists on cache and type of requested record is available
 	q := req.Question[0]
 	if ans, ok := r.cache.Get(key{respType: q.Qtype, host: q.Name}); ok {
-		fmt.Println("response from cache")
 		m := new(dns.Msg)
 		m.SetReply(req)
 		m.Question[0] = req.Question[0]

@@ -35,7 +35,7 @@ func main() {
 		//if err := NewReflector(&args.SocketArgs).Serve(); err != nil {
 		//	log.Fatal(err)
 		//}
-		s, err := NewSocket(&args.SocketArgs)
+		s, err := NewSocket(args.SocketArgs)
 		if err != nil {
 			log.Fatal(err)
 		}

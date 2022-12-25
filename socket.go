@@ -13,14 +13,13 @@ import (
 
 type (
 	Socket struct {
-		args       *args.ReflectorArgs
-		mu         sync.Mutex
-		cache      *cache.LRU[dnsmessage.Question, []dnsmessage.Resource]
-		parserPoll sync.Pool
-		connPoll   sync.Pool
-		listener   *net.UDPConn
-		cancel     chan struct{}
-		data       chan data
+		mu       sync.Mutex
+		cache    *cache.LRU[dnsmessage.Question, []dnsmessage.Resource]
+		bufPopl  sync.Pool
+		connPoll sync.Pool
+		listener *net.UDPConn
+		cancel   chan struct{}
+		data     chan data
 	}
 	data struct {
 		response []byte
@@ -28,7 +27,7 @@ type (
 	}
 )
 
-func NewSocket(args *args.ReflectorArgs) (*Socket, error) {
+func NewSocket(args args.ReflectorArgs) (*Socket, error) {
 	var (
 		listen *net.UDPConn
 		err    error
@@ -59,12 +58,12 @@ func NewSocket(args *args.ReflectorArgs) (*Socket, error) {
 	}
 
 	return &Socket{
-		args:  args,
+		//args:  args,
 		mu:    sync.Mutex{},
 		cache: lru,
-		parserPoll: sync.Pool{
+		bufPopl: sync.Pool{
 			New: func() any {
-				return dnsmessage.Parser{}
+				return make([]byte, 512)
 			},
 		},
 		connPoll: sync.Pool{
@@ -82,7 +81,6 @@ func NewSocket(args *args.ReflectorArgs) (*Socket, error) {
 }
 
 func (s *Socket) Serve() {
-
 	for {
 		buf := make([]byte, 512)
 		readLen, addr, err := s.listener.ReadFromUDP(buf)
@@ -95,76 +93,43 @@ func (s *Socket) Serve() {
 }
 
 func (s *Socket) udpHandler(addr net.Addr, in []byte) {
-	fmt.Println("handling")
-	//parser := dnsmessage.Parser{}
+	parser := dnsmessage.Parser{}
 
-	//header, err := parser.Start(in)
-	//if err != nil {
-	//	log.Println(err)
-	//	return
-	//}
-	//
-	//question, err := parser.Question()
-	//if err != nil {
-	//	log.Println(err)
-	//	return
-	//}
-	// get result from cache
-	//if answer, _ := s.cache.Get(question); false {
-	//	buf := make([]byte, 2, 514)
-	//	b := dnsmessage.NewBuilder(buf, dnsmessage.Header{ID: header.ID})
-	//	b.EnableCompression()
-	//
-	//	if err := b.StartAnswers(); err != nil {
-	//		log.Println(err)
-	//		return
-	//	}
-	//
-	//	for i := 0; i < len(answer); i++ {
-	//		currentAns := answer[i]
-	//		switch a := currentAns.Body.(type) {
-	//		case *dnsmessage.AResource:
-	//			if err = b.AResource(currentAns.Header, *a); err != nil {
-	//				log.Println(err)
-	//				return
-	//			}
-	//		case *dnsmessage.AAAAResource:
-	//			if err = b.AAAAResource(currentAns.Header, *a); err != nil {
-	//				log.Println(err)
-	//				return
-	//			}
-	//		case *dnsmessage.CNAMEResource:
-	//			if err = b.CNAMEResource(currentAns.Header, *a); err != nil {
-	//				log.Println(err)
-	//				return
-	//			}
-	//		case *dnsmessage.MXResource:
-	//			if err = b.MXResource(currentAns.Header, *a); err != nil {
-	//				log.Println(err)
-	//				return
-	//			}
-	//		case *dnsmessage.NSResource:
-	//			if err = b.NSResource(currentAns.Header, *a); err != nil {
-	//				log.Println(err)
-	//				return
-	//			}
-	//		}
-	//	}
-	//	buf, err := b.Finish()
-	//	if err != nil {
-	//		log.Println(err)
-	//		return
-	//	}
-	//	_, err = s.listener.WriteTo(buf[2:], addr)
-	//	if err != nil {
-	//		log.Println(err)
-	//		return
-	//	}
-	//}
-	//} else {
-	{
-		parser2 := dnsmessage.Parser{}
+	header, err := parser.Start(in)
+	if err != nil {
+		log.Println(err)
+		return
+	}
 
+	question, err := parser.AllQuestions()
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	//get result from cache
+	if answer, ok := s.cache.Get(question[0]); ok {
+		buf := s.bufPopl.Get().([]byte)
+		msg := dnsmessage.Message{
+			Header: dnsmessage.Header{
+				ID:       header.ID,
+				Response: true,
+				RCode:    dnsmessage.RCodeSuccess,
+			},
+			Questions: question,
+			Answers:   answer,
+		}
+		buf, err = msg.Pack()
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		_, err = s.listener.WriteTo(buf, addr)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+	} else {
+		//parser2 := dnsmessage.Parser{}
 		remoteDns, ok := s.connPoll.Get().(net.Conn)
 		defer func() {
 			err := remoteDns.Close()
@@ -183,7 +148,7 @@ func (s *Socket) udpHandler(addr net.Addr, in []byte) {
 			return
 		}
 
-		resp := make([]byte, 512)
+		resp := s.bufPopl.Get().([]byte)
 
 		// read response from remoteDns
 		n, err := remoteDns.Read(resp)
@@ -199,18 +164,18 @@ func (s *Socket) udpHandler(addr net.Addr, in []byte) {
 		}
 
 		// start parsing response to add it to the cache
-		_, err = parser2.Start(resp)
+		_, err = parser.Start(resp)
 		if err != nil {
 			log.Println(err)
 			return
 		}
 
-		question, err := parser2.AllQuestions()
+		question, err := parser.AllQuestions()
 		if err != nil {
 			log.Println(err)
 			return
 		}
-		r, err := parser2.AllAnswers()
+		r, err := parser.AllAnswers()
 		if err != nil {
 			log.Println(err)
 			return
