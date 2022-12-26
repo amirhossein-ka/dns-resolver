@@ -1,4 +1,5 @@
 # dns-resolver
 
 ## TODO
-- [ ] Fix Cache
+- [x] Fix Cache
+- [ ] Implement and use a queue

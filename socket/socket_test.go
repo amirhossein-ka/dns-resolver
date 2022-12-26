@@ -1,7 +1,8 @@
-package main
+package socket_test
 
 import (
 	"dns-resolver/args"
+	"dns-resolver/socket"
 	"net"
 	"testing"
 	"time"
@@ -14,7 +15,7 @@ var (
 
 func BenchmarkUdpHandler(b *testing.B) {
 	b.StopTimer()
-	s, err := NewSocket(args.ReflectorArgs{
+	s, err := socket.NewSocket(args.ReflectorArgs{
 		Addr:      ":8000",
 		Network:   "udp",
 		DNSAddr:   "1.1.1.1:53",

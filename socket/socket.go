@@ -1,4 +1,4 @@
-package main
+package socket
 
 import (
 	"dns-resolver/args"
@@ -18,12 +18,6 @@ type (
 		bufPopl  sync.Pool
 		connPoll sync.Pool
 		listener *net.UDPConn
-		cancel   chan struct{}
-		data     chan data
-	}
-	data struct {
-		response []byte
-		addr     *net.UDPAddr
 	}
 )
 
