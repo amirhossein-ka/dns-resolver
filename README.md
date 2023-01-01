@@ -2,4 +2,4 @@
 
 ## TODO
 - [x] Fix Cache
-- [ ] Implement and use a queue
+- [x] Implement and use a queue
