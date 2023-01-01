@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"runtime"
 	"time"
 )
 
@@ -14,8 +15,7 @@ type (
 	Args  struct {
 		OpenConn   bool
 		CmdArgs    CmdArgs
-		SocketArgs ReflectorArgs
-		Redis      Redis
+		SocketArgs SocketArgs
 	}
 	CmdArgs struct {
 		Hosts              Hosts
@@ -24,17 +24,12 @@ type (
 		resolver           *net.Resolver
 	}
 
-	ReflectorArgs struct {
+	SocketArgs struct {
 		Addr      string
 		Network   string
 		DNSAddr   string
 		CacheSize int
-	}
-
-	Redis struct {
-		Addr     string
-		Password string
-		DB       int
+		Workers   int
 	}
 )
 
@@ -62,8 +57,7 @@ func (a *Args) Parse() error {
 	server.StringVar(&a.SocketArgs.Network, "net", "udp", "socket type")
 	server.StringVar(&a.SocketArgs.DNSAddr, "dns", "1.1.1.1:53", "set custom dns for resolver")
 	server.IntVar(&a.SocketArgs.CacheSize, "cachesize", 128, "cache size list")
-	server.StringVar(&a.Redis.Addr, "raddr", "127.0.0.1:6379", "redis server address")
-	server.StringVar(&a.Redis.Password, "pass", "", "redis server password")
+	server.IntVar(&a.SocketArgs.Workers, "worker", runtime.NumCPU(), "number of workers to run concurrently")
 
 	if len(os.Args) < 2 {
 		return fmt.Errorf("error occured while parsing flags: expected 'cmd' or 'server' subcommands")

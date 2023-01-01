@@ -13,15 +13,24 @@ import (
 
 type (
 	Socket struct {
+		args     args.SocketArgs
 		mu       sync.Mutex
 		cache    *cache.LRU[dnsmessage.Question, []dnsmessage.Resource]
-		bufPopl  sync.Pool
+		bufPoll  sync.Pool
 		connPoll sync.Pool
 		listener *net.UDPConn
+		queue    Queue
+	}
+	Queue chan QueueRequest
+
+	QueueRequest struct {
+		Data   []byte
+		Addr   net.Addr
+		Length int
 	}
 )
 
-func NewSocket(args args.ReflectorArgs) (*Socket, error) {
+func NewSocket(args args.SocketArgs) (*Socket, error) {
 	var (
 		listen *net.UDPConn
 		err    error
@@ -52,10 +61,10 @@ func NewSocket(args args.ReflectorArgs) (*Socket, error) {
 	}
 
 	return &Socket{
-		//args:  args,
+		args:  args,
 		mu:    sync.Mutex{},
 		cache: lru,
-		bufPopl: sync.Pool{
+		bufPoll: sync.Pool{
 			New: func() any {
 				return make([]byte, 512)
 			},
@@ -71,18 +80,49 @@ func NewSocket(args args.ReflectorArgs) (*Socket, error) {
 			},
 		},
 		listener: listen,
+		queue:    make(Queue, args.Workers*4),
 	}, nil
 }
 
-func (s *Socket) Serve() {
+// ListenAndServe is a non blocking call,
+func (s *Socket) ListenAndServe() {
+	for i := 0; i < s.args.Workers; i++ {
+		go s.idk()
+		go s.reader()
+	}
+	// for {
+	// 	buf := s.bufPoll.Get().([]byte)
+	// 	readLen, addr, err := s.listener.ReadFromUDP(buf)
+	// 	if err != nil {
+	// 		log.Println(err)
+	// 		return
+	// 	}
+	// 	go s.udpHandler(addr, buf[:readLen])
+	// }
+}
+
+func (s *Socket) reader() {
 	for {
-		buf := make([]byte, 512)
-		readLen, addr, err := s.listener.ReadFromUDP(buf)
+		buf := s.bufPoll.Get().([]byte)
+		n, addr, err := s.listener.ReadFromUDP(buf[0:])
 		if err != nil {
 			log.Println(err)
-			return
+			continue
 		}
-		go s.udpHandler(addr, buf[:readLen])
+
+		s.queue <- QueueRequest{
+			Data:   buf,
+			Addr:   addr,
+			Length: n,
+		}
+	}
+}
+
+func (s *Socket) idk() {
+	for req := range s.queue {
+		fmt.Printf("read request from queue\n")
+		s.udpHandler(req.Addr, req.Data[:req.Length])
+        s.bufPoll.Put(req.Data)
 	}
 }
 
@@ -102,7 +142,7 @@ func (s *Socket) udpHandler(addr net.Addr, in []byte) {
 	}
 	//get result from cache
 	if answer, ok := s.cache.Get(question[0]); ok {
-		buf := s.bufPopl.Get().([]byte)
+		responseByte := s.bufPoll.Get().([]byte)
 		msg := dnsmessage.Message{
 			Header: dnsmessage.Header{
 				ID:       header.ID,
@@ -112,12 +152,12 @@ func (s *Socket) udpHandler(addr net.Addr, in []byte) {
 			Questions: question,
 			Answers:   answer,
 		}
-		buf, err = msg.Pack()
+		responseByte, err = msg.Pack()
 		if err != nil {
 			log.Println(err)
 			return
 		}
-		_, err = s.listener.WriteTo(buf, addr)
+		_, err = s.listener.WriteTo(responseByte, addr)
 		if err != nil {
 			log.Println(err)
 			return
@@ -142,10 +182,10 @@ func (s *Socket) udpHandler(addr net.Addr, in []byte) {
 			return
 		}
 
-		resp := s.bufPopl.Get().([]byte)
+		resp := s.bufPoll.Get().([]byte)
 
 		// read response from remoteDns
-		n, err := remoteDns.Read(resp)
+		n, err := remoteDns.Read(resp[0:])
 		if err != nil {
 			log.Println(err)
 			return

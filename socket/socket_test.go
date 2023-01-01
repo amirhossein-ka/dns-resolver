@@ -15,7 +15,7 @@ var (
 
 func BenchmarkUdpHandler(b *testing.B) {
 	b.StopTimer()
-	s, err := socket.NewSocket(args.ReflectorArgs{
+	s, err := socket.NewSocket(args.SocketArgs{
 		Addr:      ":8000",
 		Network:   "udp",
 		DNSAddr:   "1.1.1.1:53",
@@ -25,7 +25,7 @@ func BenchmarkUdpHandler(b *testing.B) {
 		b.Fatal(err)
 	}
 	go func() {
-		s.Serve()
+		s.ListenAndServe()
 	}()
 
 	time.Sleep(time.Second)
