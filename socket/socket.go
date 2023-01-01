@@ -87,18 +87,9 @@ func NewSocket(args args.SocketArgs) (*Socket, error) {
 // ListenAndServe is a non blocking call,
 func (s *Socket) ListenAndServe() {
 	for i := 0; i < s.args.Workers; i++ {
-		go s.idk()
+		go s.dequeuer()
 		go s.reader()
 	}
-	// for {
-	// 	buf := s.bufPoll.Get().([]byte)
-	// 	readLen, addr, err := s.listener.ReadFromUDP(buf)
-	// 	if err != nil {
-	// 		log.Println(err)
-	// 		return
-	// 	}
-	// 	go s.udpHandler(addr, buf[:readLen])
-	// }
 }
 
 func (s *Socket) reader() {
@@ -118,11 +109,11 @@ func (s *Socket) reader() {
 	}
 }
 
-func (s *Socket) idk() {
+// suggest a better name for this
+func (s *Socket) dequeuer() {
 	for req := range s.queue {
-		fmt.Printf("read request from queue\n")
 		s.udpHandler(req.Addr, req.Data[:req.Length])
-        s.bufPoll.Put(req.Data)
+        	s.bufPoll.Put(req.Data)
 	}
 }
 
